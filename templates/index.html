@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Airport Logistics Planning System | India National AI Network Map</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <!-- Local D3.js v7 for India GeoJSON vector rendering -->
+    <script src="{{ url_for('static', filename='d3.v7.min.js') }}"></script>
+</head>
+<body class="futuristic-theme">
+    <div class="page-wrapper">
+        <!-- MISSION CONTROL HEADER -->
+        <header class="header mission-control-header">
+            <div class="header-content">
+                <div class="control-status-indicator">
+                    <span class="live-dot"></span>
+                    <span class="status-text">NATIONAL AIRSPACE NETWORK • MISSION CONTROL</span>
+                </div>
+                <h1>✈️ Airport Logistics Planning System</h1>
+                <p class="subtitle">Real India Geographic Map • STRIPS • Goal-Stack Planning • Uniform Cost Search</p>
+            </div>
+        </header>
+
+        <!-- MAIN CONTAINER -->
+        <main class="container-fluid dashboard-layout">
+
+            <!-- ERROR ALERT -->
+            {% if error %}
+            <div class="alert alert-error">
+                <span class="alert-icon">⚠️</span>
+                <div class="alert-body">
+                    <strong>Validation Error:</strong> {{ error }}
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- MAIN GRID: LEFT = REAL INDIA MAP (FUTURISTIC AI VISUALIZATION) | RIGHT = MISSION CONTROL PANEL -->
+            <div class="main-visualization-grid">
+                
+                <!-- LEFT / MAIN: REAL GEOGRAPHICAL MAP OF INDIA -->
+                <section class="card map-card">
+                    <div class="card-header map-card-header">
+                        <div class="header-titles">
+                            <h2>🗺️ INDIA LOGISTICS AIRSPACE MAP</h2>
+                            <span class="sub-schematic">Real Vector Boundary (28 States & 8 Union Territories)</span>
+                        </div>
+                        <div class="map-legend">
+                            <span class="legend-item"><span class="legend-dot dot-origin"></span> Current State</span>
+                            <span class="legend-item"><span class="legend-dot dot-goal"></span> Goal State</span>
+                            <span class="legend-item"><span class="legend-dot dot-route"></span> Optimal UCS Route</span>
+                            <span class="legend-item"><span class="legend-dot dot-node"></span> State/UT Hub</span>
+                        </div>
+                    </div>
+
+                    <!-- MAP CONTAINER -->
+                    <div id="india-map-container" class="india-map-container">
+                        <div id="map-loading-spinner" class="map-loading-overlay">
+                            <div class="spinner"></div>
+                            <span>Projecting Real India Geography...</span>
+                        </div>
+                        <svg id="india-map-svg" viewBox="0 0 900 950" preserveAspectRatio="xMidYMid meet">
+                            <!-- Populated dynamically by D3.js and GeoJSON -->
+                        </svg>
+                        
+                        <!-- Hover Tooltip -->
+                        <div id="map-tooltip" class="map-tooltip" style="display: none;"></div>
+                    </div>
+
+                    <!-- MAP FOOTER / CONTROLS -->
+                    <div class="map-footer-controls">
+                        <div class="controls-buttons-group">
+                            <button id="btn-sim-start" class="btn-ctrl btn-start" title="Start Flight Animation">▶ START</button>
+                            <button id="btn-sim-pause" class="btn-ctrl btn-pause" disabled title="Pause Animation">⏸ PAUSE</button>
+                            <button id="btn-sim-resume" class="btn-ctrl btn-resume" disabled title="Resume Flight">▶ RESUME</button>
+                            <button id="btn-sim-restart" class="btn-ctrl btn-restart" title="Restart Simulation">↻ RESTART</button>
+                            <button id="btn-sim-next" class="btn-ctrl btn-next" title="Skip to Next Segment">⏭ NEXT FLIGHT</button>
+                        </div>
+                        
+                        <!-- Live Debug Indicator -->
+                        <div class="animation-debug-bar">
+                            <div class="debug-item">
+                                <span class="debug-label">Status:</span>
+                                <span id="debug-status" class="debug-pill status-ready">● READY</span>
+                            </div>
+                            <div class="debug-item">
+                                <span class="debug-label">Pos:</span>
+                                <code class="debug-coords">x: <span id="debug-x">--</span>, y: <span id="debug-y">--</span></code>
+                            </div>
+                            <div class="debug-item">
+                                <span class="debug-label">Leg:</span>
+                                <span id="debug-leg" class="debug-leg-text">{{ current_airport }} → {{ goal_airport }}</span>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- RIGHT: PLANNING CONTROL & REAL-TIME PANELS -->
+                <aside class="sidebar-controls">
+
+                    <!-- 1. PLANNING CONFIGURATION FORM -->
+                    <section class="card control-card">
+                        <div class="card-header">
+                            <h2>🎯 Planning Control</h2>
+                            <span class="badge badge-primary">Input Configuration</span>
+                        </div>
+
+                        <form action="/plan" method="POST" class="planning-form">
+                            <div class="form-group">
+                                <label for="current_airport">Current State (Origin):</label>
+                                <select name="current_airport" id="current_airport" class="form-control" required>
+                                    <optgroup label="Core Demonstration Hubs">
+                                        {% for node in india_nodes if node.is_core %}
+                                        <option value="{{ node.code }}" {% if current_airport == node.code %}selected{% endif %}>
+                                            {{ node.city }} ({{ node.code }}) - {{ node.state }}
+                                        </option>
+                                        {% endfor %}
+                                    </optgroup>
+                                    <optgroup label="All Indian States & UTs">
+                                        {% for node in india_nodes if not node.is_core %}
+                                        <option value="{{ node.code }}" {% if current_airport == node.code %}selected{% endif %}>
+                                            {{ node.city }} ({{ node.code }}) - {{ node.state }}
+                                        </option>
+                                        {% endfor %}
+                                    </optgroup>
+                                </select>
+                                <small class="field-hint">Initial predicate: <code>PLANE_AT(&lt;origin&gt;)</code></small>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="goal_airport">Goal State (Destination):</label>
+                                <select name="goal_airport" id="goal_airport" class="form-control" required>
+                                    <optgroup label="Core Demonstration Hubs">
+                                        {% for node in india_nodes if node.is_core %}
+                                        <option value="{{ node.code }}" {% if goal_airport == node.code %}selected{% endif %}>
+                                            {{ node.city }} ({{ node.code }}) - {{ node.state }}
+                                        </option>
+                                        {% endfor %}
+                                    </optgroup>
+                                    <optgroup label="All Indian States & UTs">
+                                        {% for node in india_nodes if not node.is_core %}
+                                        <option value="{{ node.code }}" {% if goal_airport == node.code %}selected{% endif %}>
+                                            {{ node.city }} ({{ node.code }}) - {{ node.state }}
+                                        </option>
+                                        {% endfor %}
+                                    </optgroup>
+                                </select>
+                                <small class="field-hint">Target predicate: <code>PLANE_AT(&lt;goal&gt;)</code></small>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="section-label">Planning Direction:</label>
+                                <div class="radio-group">
+                                    <label class="radio-label">
+                                        <input type="radio" name="direction" value="forward" {% if direction != 'reverse' %}checked{% endif %}>
+                                        <span>Current → Goal (Forward)</span>
+                                    </label>
+                                    <label class="radio-label">
+                                        <input type="radio" name="direction" value="reverse" {% if direction == 'reverse' %}checked{% endif %}>
+                                        <span>Goal → Current (Reverse)</span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="algorithm">Algorithm:</label>
+                                <select name="algorithm" id="algorithm" class="form-control">
+                                    <option value="ucs" selected>Uniform Cost Search (with STRIPS & Goal-Stack)</option>
+                                </select>
+                            </div>
+
+                            <div class="button-row">
+                                <button type="submit" class="btn btn-primary btn-block">🚀 SOLVE / Find Optimal Plan</button>
+                                <a href="/" class="btn btn-secondary">🔄 Reset</a>
+                            </div>
+                        </form>
+                    </section>
+
+                    <!-- 2. LIVE FLIGHT STATUS PANEL -->
+                    <section class="card sim-panel flight-status-panel">
+                        <div class="panel-header">
+                            <span class="panel-icon">✈️</span>
+                            <h3 id="live-flight-header">FLIGHT STATUS</h3>
+                        </div>
+                        <div class="panel-body">
+                            <div class="status-row">
+                                <span class="label">Active Route Leg:</span>
+                                <strong id="live-flight-leg" class="val-highlight">{{ current_airport }} → {{ goal_airport }}</strong>
+                            </div>
+                            <div class="status-row">
+                                <span class="label">Leg Cost:</span>
+                                <span id="live-flight-cost" class="badge-cost">Cost: 0</span>
+                            </div>
+                            <div class="status-row">
+                                <span class="label">Flight Status:</span>
+                                <span id="live-flight-status" class="status-indicator">READY FOR TAKEOFF</span>
+                            </div>
+                            <div class="progress-block">
+                                <div class="progress-labels">
+                                    <span>Leg Progress</span>
+                                    <strong id="live-progress-text">0%</strong>
+                                </div>
+                                <div class="progress-bar-container">
+                                    <div id="live-progress-bar" class="progress-bar-fill" style="width: 0%;"></div>
+                                </div>
+                            </div>
+                            <div class="overall-progress-block">
+                                <div class="progress-labels">
+                                    <span id="overall-progress-text">Flight 1 of 2</span>
+                                </div>
+                                <div class="progress-bar-container">
+                                    <div id="overall-progress-bar" class="progress-bar-fill overall-fill" style="width: 0%;"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- 3. STRIPS LIVE WORLD STATE PANEL -->
+                    <section class="card sim-panel strips-live-panel">
+                        <div class="panel-header">
+                            <span class="panel-icon">📦</span>
+                            <h3>CURRENT WORLD STATE (STRIPS)</h3>
+                        </div>
+                        <div class="panel-body">
+                            <div class="active-operator-row">
+                                <span class="label">Active Operator:</span>
+                                <code id="strips-action-active" class="operator-tag">NONE</code>
+                            </div>
+                            <div class="predicates-section">
+                                <span class="label">Active State Predicates:</span>
+                                <ul id="strips-predicates-list" class="predicates-list">
+                                    <li class="predicate-badge true-predicate"><span class="icon">✓</span> <code>PLANE_AT({{ current_airport }})</code></li>
+                                    <li class="predicate-badge true-predicate"><span class="icon">✓</span> <code>RUNWAY_CLEAR</code></li>
+                                    <li class="predicate-badge true-predicate"><span class="icon">✓</span> <code>FUEL_AVAILABLE</code></li>
+                                </ul>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- 4. SELECTED STATE INFO MODAL / PANEL (CLICK TO INSPECT) -->
+                    <section id="state-info-panel" class="card state-info-card" style="display: none;">
+                        <div class="card-header state-info-header">
+                            <h3 id="info-state-title">GUJARAT</h3>
+                            <button class="close-info-btn" onclick="document.getElementById('state-info-panel').style.display='none'">&times;</button>
+                        </div>
+                        <div class="card-body info-body-grid">
+                            <div class="info-row"><span class="info-lbl">State Code:</span> <strong id="info-state-code">GJ</strong></div>
+                            <div class="info-row"><span class="info-lbl">Capital:</span> <span id="info-state-capital">Gandhinagar</span></div>
+                            <div class="info-row"><span class="info-lbl">Airport Hub:</span> <strong id="info-city-name">Ahmedabad</strong> (<span id="info-airport-code">AMD</span>)</div>
+                            <div class="info-row"><span class="info-lbl">Airport Name:</span> <span id="info-airport-name">Sardar Vallabhbhai Patel Int'l</span></div>
+                            <div class="info-row"><span class="info-lbl">Coordinates:</span> <code id="info-coords">23.07, 72.63</code></div>
+                            <div class="info-row"><span class="info-lbl">Planning Status:</span> <span class="status-available">● AVAILABLE</span></div>
+                            <div class="info-row full-width"><span class="info-lbl">Direct Flight Connections:</span> <div id="info-connections" class="conn-pills"></div></div>
+                        </div>
+                    </section>
+
+                </aside>
+            </div>
+
+            <!-- GOAL REACHED CELEBRATION MODAL -->
+            <div id="goal-reached-card" class="goal-reached-overlay" style="display: none;">
+                <div class="goal-modal-box">
+                    <div class="goal-icon-animate">🎯</div>
+                    <h3>GOAL REACHED!</h3>
+                    <p id="goal-details-text" class="goal-route-details">Ahmedabad → Mumbai → Jaipur</p>
+                    <div id="goal-stats-summary" class="goal-stats-row"></div>
+                    <button class="btn btn-primary" onclick="document.getElementById('goal-reached-card').style.display='none'">✓ Continue</button>
+                </div>
+            </div>
+
+            <!-- ACADEMIC & VIVA PRACTICAL RESULTS SECTION -->
+            {% if result %}
+            <div id="results" class="results-area">
+                
+                <!-- SUMMARY STATS BANNER -->
+                <section class="card result-banner">
+                    <div class="result-banner-header">
+                        <h2>📋 LOGISTICS PLANNING RESULT</h2>
+                        <span class="status-badge success">Goal Reached: {{ result.goal_reached }}</span>
+                    </div>
+
+                    <div class="result-meta-grid">
+                        <div class="meta-item">
+                            <span class="meta-label">Current State:</span>
+                            <span class="meta-value code-font">{{ predicates.current_predicate }}</span>
+                        </div>
+                        <div class="meta-item">
+                            <span class="meta-label">Goal State:</span>
+                            <span class="meta-value code-font">{{ predicates.goal_predicate }}</span>
+                        </div>
+                        <div class="meta-item">
+                            <span class="meta-label">Direction:</span>
+                            <span class="meta-value highlight">{{ result.direction_label }}</span>
+                        </div>
+                        <div class="meta-item">
+                            <span class="meta-label">Algorithm:</span>
+                            <span class="meta-value">Uniform Cost Search (Dijkstra Variant)</span>
+                        </div>
+                    </div>
+
+                    <div class="stats-bar">
+                        <div class="stat-box">
+                            <span class="stat-number">{{ result.total_cost }}</span>
+                            <span class="stat-title">Total Cost</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-number">{{ result.nodes_explored_count }}</span>
+                            <span class="stat-title">Nodes Explored</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-number">{{ result.number_of_actions }}</span>
+                            <span class="stat-title">Number of Actions</span>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- SECTION 10: OPTIMAL PLAN EXECUTION -->
+                <section class="card plan-card">
+                    <div class="card-header">
+                        <h2>🛠️ OPTIMAL PLAN EXECUTION SEQUENCE</h2>
+                        <span class="badge badge-info">{{ result.actions|length }} Sequential Operators</span>
+                    </div>
+                    <div class="step-list">
+                        {% for action in result.actions %}
+                        <div class="step-item">
+                            <div class="step-num">Step {{ loop.index }}</div>
+                            <div class="step-content">
+                                <div class="step-title">
+                                    <span class="action-name">{{ action.name }}</span>
+                                    {% if action.cost > 0 %}
+                                    <span class="badge badge-cost">Cost: {{ action.cost }}</span>
+                                    {% else %}
+                                    <span class="badge badge-free">Cost: 0</span>
+                                    {% endif %}
+                                </div>
+                                <p class="step-desc">{{ action.details }}</p>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </section>
+
+                <!-- SECTION 12: STRIPS OPERATOR REPRESENTATION -->
+                <section class="card strips-card">
+                    <div class="card-header">
+                        <h2>📦 STRIPS OPERATOR REPRESENTATION</h2>
+                        <span class="badge badge-purple">Preconditions & Effects</span>
+                    </div>
+                    <p class="section-intro">
+                        Each action applied in the optimal plan is explicitly defined using classical STRIPS triples:
+                        <strong>Preconditions</strong>, <strong>Add Effects</strong>, and <strong>Delete Effects</strong>.
+                    </p>
+
+                    <div class="strips-grid">
+                        {% for action in result.actions %}
+                        <div class="strips-action-card">
+                            <div class="action-card-header">
+                                <h3>Action: <code>{{ action.name }}</code></h3>
+                                <span class="cost-tag">Cost: {{ action.cost }}</span>
+                            </div>
+
+                            <div class="strips-section">
+                                <div class="strips-label pre-label">Preconditions:</div>
+                                <ul class="strips-list">
+                                    {% for p in action.preconditions %}
+                                    <li><code>{{ p }}</code></li>
+                                    {% endfor %}
+                                </ul>
+                            </div>
+
+                            <div class="strips-section">
+                                <div class="strips-label add-label">Add Effects (+):</div>
+                                <ul class="strips-list">
+                                    {% for a in action.add_effects %}
+                                    <li><code>{{ a }}</code></li>
+                                    {% endfor %}
+                                </ul>
+                            </div>
+
+                            <div class="strips-section">
+                                <div class="strips-label del-label">Delete Effects (-):</div>
+                                <ul class="strips-list">
+                                    {% for d in action.del_effects %}
+                                    <li><code>{{ d }}</code></li>
+                                    {% endfor %}
+                                </ul>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </section>
+
+                <!-- SECTION 13: GOAL-STACK RESULT -->
+                <section class="card goalstack-card">
+                    <div class="card-header">
+                        <h2>🧱 GOAL-STACK PLANNING DEMONSTRATION</h2>
+                        <span class="badge badge-stack">Backward Goal Decomposition</span>
+                    </div>
+
+                    <div class="gs-intro">
+                        <p>
+                            <strong>Concept:</strong> Goal-Stack Planning maintains a LIFO stack. The top-level goal is pushed first.
+                            The planner works backward: to achieve the goal state, it determines which STRIPS operator achieves it,
+                            then pushes that operator and its unmet preconditions as sub-goals.
+                        </p>
+                    </div>
+
+                    <!-- Conceptual Hierarchy Tree -->
+                    <div class="goal-hierarchy-block">
+                        <h3>1. Conceptual Backward Goal Breakdown</h3>
+                        <div class="hierarchy-flow">
+                            {% for item in goal_stack.hierarchy %}
+                            <div class="hierarchy-card">
+                                <span class="hierarchy-stage">{{ item.stage }}</span>
+                                <span class="hierarchy-arrow">↓</span>
+                                <span class="hierarchy-item"><code>{{ item.item }}</code></span>
+                                <small class="hierarchy-note">{{ item.description }}</small>
+                            </div>
+                            {% endfor %}
+                            <div class="hierarchy-card final-plan-card">
+                                <span class="hierarchy-stage">Final Plan Executed</span>
+                                <span class="hierarchy-arrow">↓</span>
+                                <div class="hierarchy-subitems">
+                                    {% for act_name in goal_stack.final_plan %}
+                                    <span class="plan-pill">{{ act_name }}</span>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Detailed Stack Execution Trace -->
+                    <div class="stack-trace-block">
+                        <h3>2. Detailed Goal Stack Trace (Push/Pop Transitions)</h3>
+                        <div class="trace-table-wrapper">
+                            <table class="trace-table">
+                                <thead>
+                                    <tr>
+                                        <th>Step</th>
+                                        <th>Operation</th>
+                                        <th>Active Goal / Action</th>
+                                        <th>Stack State (Top → Bottom)</th>
+                                        <th>World State Predicates</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for step in goal_stack.trace_steps %}
+                                    <tr>
+                                        <td><strong>#{{ step.step }}</strong></td>
+                                        <td><span class="op-badge">{{ step.operation }}</span></td>
+                                        <td><code>{{ step.current_item }}</code></td>
+                                        <td>
+                                            {% if step.stack_snapshot %}
+                                            <div class="stack-view">
+                                                {% for s in step.stack_snapshot|reverse %}
+                                                <div class="stack-item {% if loop.first %}top-item{% endif %}">
+                                                    {{ s }} {% if loop.first %}<span class="top-tag">[TOP]</span>{% endif %}
+                                                </div>
+                                                {% endfor %}
+                                            </div>
+                                            {% else %}
+                                            <span class="text-muted">(Stack Empty - Completed)</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <div class="state-predicates-view">
+                                                {% for pred in step.state_snapshot %}
+                                                <span class="pred-tag">{{ pred }}</span>
+                                                {% endfor %}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- SECTION 6: UCS EXPLORATION HISTORY -->
+                <section class="card ucs-history-card">
+                    <div class="card-header">
+                        <h2>🔍 UNIFORM COST SEARCH (UCS) EXPLORATION LOG</h2>
+                        <span class="badge badge-accent">Priority Queue Evaluation</span>
+                    </div>
+                    <p class="section-intro">
+                        Shows the sequence of states expanded by UCS (ordered by minimum cumulative cost <code>g(n)</code>).
+                    </p>
+                    <div class="trace-table-wrapper">
+                        <table class="trace-table">
+                            <thead>
+                                <tr>
+                                    <th>Expansion Step</th>
+                                    <th>Airport Expanded</th>
+                                    <th>Cumulative Path Cost g(n)</th>
+                                    <th>Path Explored</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for exp in result.exploration_history %}
+                                <tr>
+                                    <td><strong>{{ exp.step }}</strong></td>
+                                    <td><strong>{{ exp.airport }}</strong> - {{ exp.airport_name }}</td>
+                                    <td><span class="cost-pill">{{ exp.cumulative_cost }}</span></td>
+                                    <td><code>{{ exp.current_path }}</code></td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- VIVA QUICK REVISION NOTES -->
+                <section class="card viva-card">
+                    <div class="card-header">
+                        <h2>🎓 B.Tech AI Practical Viva Quick Reference</h2>
+                        <span class="badge badge-warning">Viva Notes</span>
+                    </div>
+                    <div class="viva-grid">
+                        <div class="viva-item">
+                            <h4>What is STRIPS?</h4>
+                            <p><strong>Stanford Research Institute Problem Solver</strong>. Classical AI automated planning system using propositional states and operators defined by Preconditions, Add lists, and Delete lists.</p>
+                        </div>
+                        <div class="viva-item">
+                            <h4>Why Uniform Cost Search (UCS)?</h4>
+                            <p>UCS expands search nodes in order of minimum path cost <code>g(n)</code> using a min-heap priority queue. Because edge costs are non-negative ($c \ge 0$), the first time the goal is popped, the solution is proven optimal.</p>
+                        </div>
+                        <div class="viva-item">
+                            <h4>How does Goal-Stack Planning work?</h4>
+                            <p>It maintains a LIFO stack. Goals are decomposed backward into operators that achieve their preconditions. When an operator reaches the top with all preconditions satisfied, it executes and updates the world state.</p>
+                        </div>
+                        <div class="viva-item">
+                            <h4>Real Geographic Map Integration</h4>
+                            <p>Real GeoJSON state boundaries projected via D3.js Mercator projection. Nodes are placed using actual latitude and longitude coordinates of India's airport hubs.</p>
+                        </div>
+                    </div>
+                </section>
+
+            </div>
+            {% endif %}
+
+        </main>
+
+        <!-- FOOTER -->
+        <footer class="footer">
+            <p>✈️ Airport Logistics Planning System • National Airspace Network Simulation • B.Tech AI Laboratory</p>
+        </footer>
+    </div>
+
+    <!-- Embedded Serialized Plan & National Nodes Data for D3.js -->
+    {% if json_plan_data %}
+    <script id="initial-plan-data" type="application/json">
+        {{ json_plan_data|safe }}
+    </script>
+    {% endif %}
+
+    {% if json_india_nodes %}
+    <script id="india-nodes-data" type="application/json">
+        {{ json_india_nodes|safe }}
+    </script>
+    {% endif %}
+
+    {% if json_flight_edges %}
+    <script id="india-edges-data" type="application/json">
+        {{ json_flight_edges|safe }}
+    </script>
+    {% endif %}
+
+    <!-- Real-time Geographical Animation Script -->
+    <script src="{{ url_for('static', filename='animation.js') }}"></script>
+</body>
+</html>

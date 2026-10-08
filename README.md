@@ -219,13 +219,3 @@ http://127.0.0.1:5000
 
 ---
 
-## 10. Viva Questions & Quick Answers
-
-1. **Q: What is STRIPS?**
-   *A:* Stanford Research Institute Problem Solver. It represents actions by preconditions, add lists, and delete lists.
-
-2. **Q: Why does UCS guarantee the optimal route?**
-   *A:* UCS expands nodes in order of non-decreasing path cost $g(n)$ using a priority queue. Because edge costs are non-negative ($c \ge 0$), the first time the goal node is popped from the queue, its path cost is guaranteed to be minimal.
-
-3. **Q: How does Goal-Stack Planning handle sub-goals?**
-   *A:* It uses a LIFO stack. Complex goals are split into sub-goals. Sub-goals that are not yet true in the current state push operators that achieve them onto the stack.
